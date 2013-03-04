@@ -6,6 +6,8 @@
  * Licensed under the MIT license.
  */
 
+path = require('path');
+
 module.exports = function(grunt) {
   'use strict';
 
@@ -33,6 +35,7 @@ module.exports = function(grunt) {
 
     var srcFiles;
     var srcCompiled;
+    var sourceMap;
     var taskOutput;
 
     this.files.forEach(function(file) {
@@ -48,15 +51,20 @@ module.exports = function(grunt) {
 
       srcFiles.forEach(function(srcFile) {
         srcCompiled = compileCoffee(srcFile, options);
+        sourceMap = null;
+        if (options.sourceMap) {
+          sourceMap = srcCompiled.v3SourceMap;
+          srcCompiled = srcCompiled.js
+        }
 
         if (helpers.isIndividualDest(file.dest)) {
           basePath = helpers.findBasePath(srcFiles, options.basePath);
           newFileDest = helpers.buildIndividualDest(file.dest, srcFile, basePath, options.flatten);
 
-          grunt.file.write(newFileDest, srcCompiled || '');
+          writeJs(srcFile, srcFile, srcCompiled, sourceMap);
           grunt.log.writeln('File ' + newFileDest.cyan + ' created.');
         } else {
-          taskOutput.push(srcCompiled);
+          writeJs(srcFile, srcFile, srcCompiled, sourceMap);
         }
       });
 
@@ -79,6 +87,55 @@ module.exports = function(grunt) {
     } catch (e) {
       grunt.log.error(e);
       grunt.fail.warn('CoffeeScript failed to compile.');
+    }
+  };
+
+  var baseFileName = function(file, stripExt) {
+    var parts;
+    if (stripExt == null) {
+      stripExt = false;
+    }
+    parts = file.split('/');
+    file = parts[parts.length - 1];
+    if (!stripExt) {
+      return file;
+    }
+    parts = file.split('.');
+    parts.pop();
+    if (parts[parts.length - 1] === 'coffee') {
+      parts.pop();
+    }
+    return parts.join('.');
+  };
+
+  var outputPath = function(source, base, extension) {
+    var baseDir, basename, dir, srcDir;
+    if (extension == null) {
+      extension = ".js";
+    }
+    basename = baseFileName(source, true);
+    srcDir = path.dirname(source);
+    baseDir = base === '.' ? srcDir : srcDir.substring(base.length);
+    return path.join(srcDir, basename + extension);
+  };
+
+  var writeJs = function(base, sourcePath, js, generatedSourceMap) {
+    var compile, jsDir, jsPath, sourceMapPath;
+    if (generatedSourceMap == null) {
+      generatedSourceMap = null;
+    }
+    jsPath = outputPath(sourcePath, base);
+    sourceMapPath = outputPath(sourcePath, base, ".map");
+    jsDir = path.dirname(jsPath);
+    if (js.length <= 0) {
+      js = ' ';
+    }
+    if (generatedSourceMap) {
+      js = "//@ sourceMappingURL=" + (baseFileName(sourceMapPath)) + "\n" + js;
+    }
+    grunt.file.write(jsPath, js);
+    if (generatedSourceMap) {
+      grunt.file.write(sourceMapPath, generatedSourceMap);
     }
   };
 };
